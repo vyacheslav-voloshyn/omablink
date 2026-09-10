@@ -252,8 +252,19 @@ BarWidget {
     if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
   }
 
+  property double lastToggleAt: 0
+
   function togglePanel() {
     if (!panelLoader.item) return
+
+    // A click on the widget while the panel is open can arrive twice: the
+    // panel's dismissal surface forwards presses that land on the bar, and
+    // the bar strip is also masked click-through so the real press reaches
+    // this button. Two toggles in one gesture cancel out, which read as "the
+    // second click does nothing".
+    var now = Date.now()
+    if (now - root.lastToggleAt < 250) return
+    root.lastToggleAt = now
     // The bar can rebuild its widget row, which leaves the panel anchored to
     // a button that no longer exists — and KeyboardPanel derives its screen
     // from the anchor's window, so it silently stops mapping. Re-anchor on
