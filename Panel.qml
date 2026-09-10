@@ -42,6 +42,38 @@ Panel {
 
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
+  // The bar collapses its center section 120ms after the pointer leaves it
+  // (Bar.qml centerSectionRevealTimer), which pulls the button this panel is
+  // anchored to out from under it — the popup then closes on its own a moment
+  // after opening. Every first-party center panel suppresses that collapse
+  // while it is up; without it the panel looked like it "opens only the first
+  // time", because opening it without the pointer on the bar closed it again
+  // immediately.
+  function setCenterHoverRevealSuppressed(value) {
+    if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
+      root.bar.setCenterHoverRevealSuppressed(value)
+    else if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+      root.bar.centerHoverRevealSuppressed = value
+  }
+
+  // Deferred so a panel taking over from another one wins the shared flag.
+  function open() {
+    root.controller.show()
+    Qt.callLater(function () {
+      if (root.opened) root.setCenterHoverRevealSuppressed(true)
+    })
+  }
+
+  function close() {
+    root.setCenterHoverRevealSuppressed(false)
+    root.controller.hide()
+  }
+
+  function toggle() {
+    if (root.opened) root.close()
+    else root.open()
+  }
+
   function numberSetting(name) {
     var fallback = root.defaults[name]
     return Model.clampNumber(setting(name, fallback), fallback, 1, 100000)
@@ -55,10 +87,11 @@ Panel {
     open: root.opened
     centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: Style.space(400)
-    // Slack for the gaps the Column adds around its children: measured, not
-    // guessed — without it the footer row lands just outside the card.
-    contentHeight: layout.implicitHeight + Style.spacing.md * 4
+    // KeyboardPanel's own helpers: they add the card's vertical inset and
+    // clamp to what actually fits on screen. Guessing the slack by hand left
+    // the footer outside the card and the height unclamped.
+    contentWidth: panel.fittedContentWidth(Style.space(400))
+    contentHeight: panel.fittedContentHeight(layout.implicitHeight)
 
     PanelKeyCatcher {
       id: keyCatcher

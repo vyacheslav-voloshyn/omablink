@@ -254,6 +254,11 @@ BarWidget {
 
   function togglePanel() {
     if (!panelLoader.item) return
+    // The bar can rebuild its widget row, which leaves the panel anchored to
+    // a button that no longer exists — and KeyboardPanel derives its screen
+    // from the anchor's window, so it silently stops mapping. Re-anchor on
+    // every open instead of only when `bar` or `settings` change.
+    injectPanel()
     pushDay()
     panelLoader.item.toggle()
   }
@@ -263,7 +268,9 @@ BarWidget {
   // every second — screenSeconds increments on every tick — which resized the
   // card continuously and left the popup unable to map at all after a while.
   function pushDay() {
-    if (panelLoader.item && "day" in panelLoader.item) panelLoader.item.day = root.day
+    if (!panelLoader.item) return
+    if ("day" in panelLoader.item) panelLoader.item.day = root.day
+    if ("statusText" in panelLoader.item) panelLoader.item.statusText = root.statusText
   }
 
   // Only the structural wiring is pushed imperatively, and only when it
@@ -286,11 +293,15 @@ BarWidget {
   onBarChanged: injectPanel()
   onSettingsChanged: injectPanel()
 
+  // Only while the panel is up: writing into a closed popup's content is
+  // what broke it before. The status line changes on its own schedule (the
+  // countdown, and the "away" flip after a few idle minutes), so leaving the
+  // binding live meant resizing a hidden card behind the scenes.
   Binding {
     target: panelLoader.item
     property: "statusText"
     value: root.statusText
-    when: panelLoader.item !== null
+    when: panelLoader.item !== null && panelLoader.item.opened
   }
 
   Binding {
@@ -526,6 +537,9 @@ BarWidget {
         panelLoaded: panelLoader.item !== null,
         panelStatus: panelLoader.status,
         panelOpened: panelLoader.item ? panelLoader.item.opened : null,
+        away: root.away,
+        paused: root.paused,
+        breaking: root.breaking,
         hasBar: root.bar !== null,
         peers: root.bar && typeof root.bar.moduleWidgets === "function"
           ? root.bar.moduleWidgets(root.moduleName).length : -1
