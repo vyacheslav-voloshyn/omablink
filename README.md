@@ -44,6 +44,7 @@ with `omarchy bar move amsi.omablink --section right`, or reorder the entry in
 Keybindings are yours to add — in `~/.config/hypr/bindings.lua`:
 
 ```lua
+o.bind("SUPER + ALT + L", "Omablink settings", "omarchy-shell amsi.omablink panel")
 o.bind("SUPER + SHIFT + L", "Omablink pause", "omarchy-shell amsi.omablink toggle")
 o.bind("SUPER + SHIFT + CTRL + L", "Omablink break now", "omarchy-shell amsi.omablink breakNow")
 ```

@@ -492,7 +492,9 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.displayText
-    tooltipText: root.statusText
+    // The tooltip carries the click hint too: the panel is the only way into
+    // the settings, and a bare countdown gives no reason to click it.
+    tooltipText: root.statusText + "  ·  click: stats and settings, middle: pause"
     dimmed: root.paused || root.away
     active: root.breaking
     horizontalMargin: 8.75
