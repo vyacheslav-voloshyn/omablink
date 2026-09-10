@@ -1,0 +1,19 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The timer and statistics math is deliberately Qt-free so it runs
+      # here; the QML around it needs a Wayland session and is checked by
+      # hand against a running shell.
+      - run: node test/model-test.cjs

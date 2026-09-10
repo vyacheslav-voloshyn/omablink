@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "amsi.omablink",
+  "name": "Omablink",
+  "version": "1.0.0",
+  "author": "vyacheslav-voloshyn",
+  "description": "Eye-rest, stand-up and screen-lock breaks with a blink hint and daily stats",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omablink",
+    "description": "Break timer: eye rest, stand up, screen lock, blink hints",
+    "category": "Health",
+    "allowMultiple": false
+  }
+}

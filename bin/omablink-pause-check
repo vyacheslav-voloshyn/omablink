@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Prints one reason per line why an eye-rest break must not start right now.
+# Empty output means it is fine to take over the screen. Called once per due
+# break rather than polled, so a ~50ms pw-dump parse costs nothing.
+#
+# Usage: omablink-pause-check <fullscreen> <microphone> <video>  (1 = check)
+
+set -uo pipefail
+
+check_fullscreen=${1:-1}
+check_microphone=${2:-1}
+check_video=${3:-1}
+
+if [[ $check_fullscreen == 1 ]]; then
+  # Any nonzero fullscreen mode counts: games, a maximised video, a
+  # presentation. Hyprland reports it per focused window.
+  hyprctl activewindow -j 2>/dev/null | /usr/bin/python3 -c '
+import json, sys
+try:
+    window = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if window and window.get("fullscreen"):
+    print("fullscreen")
+' 2>/dev/null
+fi
+
+if [[ $check_microphone == 1 ]]; then
+  # An app holding a capture stream means a call: Meet and Slack huddles live
+  # in browser tabs with no window of their own, so the microphone is the only
+  # signal that catches them.
+  if [[ -n $(pactl list short source-outputs 2>/dev/null) ]]; then
+    echo microphone
+  fi
+fi
+
+if [[ $check_video == 1 ]]; then
+  # A PipeWire video capture node is either the camera or a screen share
+  # through xdg-desktop-portal — both mean "do not cover the screen".
+  pw-dump 2>/dev/null | /usr/bin/python3 -c '
+import json, sys
+try:
+    nodes = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for node in nodes:
+    props = (node.get("info") or {}).get("props") or {}
+    if props.get("media.class") == "Stream/Input/Video":
+        print("video")
+        break
+' 2>/dev/null
+fi
+
+exit 0
