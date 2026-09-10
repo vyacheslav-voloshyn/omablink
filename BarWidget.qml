@@ -227,6 +227,31 @@ BarWidget {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
+  // The bar routes popups through the widget root, not through the panel:
+  // Bar.findPanelWidget wants open/close/opened here, and KeyboardPanel's
+  // own close() falls back to writing its `open` property directly when the
+  // owner has no close() — which destroys the binding to the panel
+  // controller, so the popup opens exactly once and never again. That was the
+  // "first click works, second does nothing" bug.
+  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
+
+  function open() {
+    if (!panelLoader.item) return
+    pushDay()
+    panelLoader.item.open()
+  }
+
+  function close() {
+    if (panelLoader.item) panelLoader.item.close()
+  }
+
+  // Bar.requestPopout prefers this over close() when another bar widget takes
+  // over the popup slot, so the switch animates instead of blinking.
+  function closeForPopoutSwitch() {
+    if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
+  }
+
   function togglePanel() {
     if (!panelLoader.item) return
     pushDay()
@@ -526,6 +551,8 @@ BarWidget {
     function lockNow(): void { root.startBreak("lock") }
     function skip(): void { root.broadcast("skipBreak") }
     function panel(): void { root.broadcast("togglePanel") }
+    function open(): void { root.open() }
+    function close(): void { root.close() }
     function blink(): void { blinkHint.shown = true; blinkTimer.interval = 2000; blinkTimer.restart() }
   }
 
