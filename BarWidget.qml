@@ -227,8 +227,25 @@ BarWidget {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
-  function togglePanel() { panelLoader.item ? panelLoader.item.toggle() : undefined }
+  function togglePanel() {
+    if (!panelLoader.item) return
+    pushDay()
+    panelLoader.item.toggle()
+  }
 
+  // Today's counters are pushed on open and then on a slow tick while the
+  // panel is up. Binding them straight to `day` rewrote the panel's content
+  // every second — screenSeconds increments on every tick — which resized the
+  // card continuously and left the popup unable to map at all after a while.
+  function pushDay() {
+    if (panelLoader.item && "day" in panelLoader.item) panelLoader.item.day = root.day
+  }
+
+  // Only the structural wiring is pushed imperatively, and only when it
+  // actually changes. The live values (status line, today's counters) arrive
+  // through Bindings below: re-injecting them every second — the status text
+  // changes on every tick — churned the panel's whole content tree and left
+  // the popup coordinator unable to reopen it after a while.
   function injectPanel() {
     var target = panelLoader.item
     if (!target) return
@@ -236,9 +253,6 @@ BarWidget {
     if ("settings" in target) target.settings = root.settings
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
-    if ("day" in target) target.day = root.day
-    if ("statusText" in target) target.statusText = root.statusText
-    if ("paused" in target) target.paused = root.paused
   }
 
   implicitWidth: button.implicitWidth
@@ -246,9 +260,20 @@ BarWidget {
 
   onBarChanged: injectPanel()
   onSettingsChanged: injectPanel()
-  onDayChanged: injectPanel()
-  onStatusTextChanged: injectPanel()
-  onPausedChanged: injectPanel()
+
+  Binding {
+    target: panelLoader.item
+    property: "statusText"
+    value: root.statusText
+    when: panelLoader.item !== null
+  }
+
+  Binding {
+    target: panelLoader.item
+    property: "paused"
+    value: root.paused
+    when: panelLoader.item !== null
+  }
 
   Timer {
     interval: 1000
@@ -330,6 +355,13 @@ BarWidget {
     repeat: true
     running: true
     onTriggered: root.flushState()
+  }
+
+  Timer {
+    interval: 5000
+    repeat: true
+    running: panelLoader.item !== null && panelLoader.item.opened
+    onTriggered: root.pushDay()
   }
 
   Timer {
@@ -464,6 +496,16 @@ BarWidget {
         + ", blink " + (root.config.blinkEnabled ? root.config.blinkMinutes + "m" : "off") + "]"
     }
     function stats(): string { return JSON.stringify(root.day) }
+    function debug(): string {
+      return JSON.stringify({
+        panelLoaded: panelLoader.item !== null,
+        panelStatus: panelLoader.status,
+        panelOpened: panelLoader.item ? panelLoader.item.opened : null,
+        hasBar: root.bar !== null,
+        peers: root.bar && typeof root.bar.moduleWidgets === "function"
+          ? root.bar.moduleWidgets(root.moduleName).length : -1
+      })
+    }
 
     // Scriptable settings, so the schedule can be changed from a keybinding
     // or a hook without opening the panel. Values arrive as strings over IPC.

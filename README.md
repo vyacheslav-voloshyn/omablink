@@ -19,7 +19,10 @@ Each tier counts its own elapsed seconds, so skipping or deferring one does
 not shift the others. A longer rest satisfies the shorter ones: a long break
 resets the eye timer, a lock resets everything.
 
-![Bar widget](assets/bar.png)
+The widget shows the countdown to whichever break comes first; the blink hint
+is a strip that appears under the bar and takes neither focus nor clicks.
+
+![Bar widget](assets/bar.png) ![Blink hint](assets/blink.png)
 
 ## Install
 
