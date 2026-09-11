@@ -250,6 +250,10 @@ BarWidget {
 
   function open() {
     if (!panelLoader.item) return
+    // Same re-anchoring as togglePanel: the bar can rebuild its widget row,
+    // and KeyboardPanel derives its screen from the anchor's window, so a
+    // stale anchor leaves the popup unable to map at all.
+    injectPanel()
     pushDay()
     panelLoader.item.open()
   }
