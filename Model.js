@@ -41,7 +41,7 @@ function idleCreditsBreak(idleSeconds, breakSeconds) {
 
 // The helper prints one reason per line; anything else on stdout (an error
 // from hyprctl, say) must not read as a reason to skip the break forever.
-var KNOWN_REASONS = ["fullscreen", "microphone", "video"]
+var KNOWN_REASONS = ["fullscreen", "microphone", "video", "meeting"]
 
 function parsePauseReasons(stdout) {
   var lines = String(stdout || "").split("\n")
@@ -56,7 +56,8 @@ function parsePauseReasons(stdout) {
 var REASON_LABELS = {
   fullscreen: "fullscreen window",
   microphone: "call in progress",
-  video: "camera or screen share"
+  video: "camera or screen share",
+  meeting: "meeting window open"
 }
 
 function pauseReasonText(reasons) {

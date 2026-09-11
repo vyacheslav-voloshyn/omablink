@@ -39,6 +39,8 @@ assert.deepStrictEqual(Model.parsePauseReasons("Couldn't connect to Hyprland\n")
 assert.deepStrictEqual(Model.parsePauseReasons("video\nvideo\n"), ["video"])
 
 assert.strictEqual(Model.pauseReasonText(["microphone"]), "call in progress")
+assert.deepStrictEqual(Model.parsePauseReasons("meeting\n"), ["meeting"])
+assert.strictEqual(Model.pauseReasonText(["meeting"]), "meeting window open")
 assert.strictEqual(Model.pauseReasonText(["fullscreen", "video"]), "fullscreen window, camera or screen share")
 assert.strictEqual(Model.pauseReasonText([]), "")
 

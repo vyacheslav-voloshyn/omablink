@@ -42,7 +42,14 @@ BarWidget {
     pauseOnFullscreen: Model.boolSetting(setting("pauseOnFullscreen", true), true),
     pauseOnMicrophone: Model.boolSetting(setting("pauseOnMicrophone", true), true),
     pauseOnVideo: Model.boolSetting(setting("pauseOnVideo", true), true),
-    pauseOnIdle: Model.boolSetting(setting("pauseOnIdle", true), true)
+    pauseOnIdle: Model.boolSetting(setting("pauseOnIdle", true), true),
+    pauseOnMeeting: Model.boolSetting(setting("pauseOnMeeting", true), true),
+    // Matched against every window's title and class. A muted listener holds
+    // no microphone and no camera, so the window is the only thing left to
+    // look at. Deliberately narrow: a pattern that also matches the chat app
+    // sitting open all day would defer every break forever.
+    meetingPattern: String(setting("meetingPattern",
+      "Google Meet|Meet - |Meet – |Zoom Meeting|Microsoft Teams|Teams Meeting|Webex|Jitsi|huddle"))
   })
 
   // --- state ----------------------------------------------------------------
@@ -142,7 +149,8 @@ BarWidget {
       root.helperPath,
       root.config.pauseOnFullscreen ? "1" : "0",
       root.config.pauseOnMicrophone ? "1" : "0",
-      root.config.pauseOnVideo ? "1" : "0"
+      root.config.pauseOnVideo ? "1" : "0",
+      root.config.pauseOnMeeting ? root.config.meetingPattern : ""
     ]
     pauseCheck.running = true
   }
@@ -174,7 +182,11 @@ BarWidget {
     if (kind === "lock") {
       bump("locks")
       locker.running = false
-      locker.command = ["omarchy-shell", "lock", "lock"]
+      // hyprlock types through whatever keyboard layout Hyprland has active,
+      // so locking while a non-Latin layout is selected leaves a password
+      // that cannot be typed. Layout 0 is the first entry of kb_layout.
+      locker.command = ["sh", "-c",
+        "hyprctl switchxkblayout all 0 >/dev/null 2>&1; exec omarchy-shell lock lock"]
       locker.running = true
     } else {
       bump(kind === "long" ? "long" : "micro")

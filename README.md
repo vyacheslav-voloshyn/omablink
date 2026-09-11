@@ -13,7 +13,7 @@ focus, and today's numbers in the widget's own panel.
 | Eye break | every 20 min, 20 s | Fullscreen countdown. Skippable |
 | Long break | every 4 h, 2 min | Fullscreen countdown, "stand up". Skippable |
 | Screen lock | every 45 min, 30 s warning | Countdown, then Omarchy's lock screen. **Not** skippable |
-| Blink hint | every 5 min, ~2 s | Small strip under the bar. Takes no focus, no clicks |
+| Blink hint | every 5 min, ~0.8 s | Eyelids sweep shut and open again. Takes no focus, no clicks |
 
 Each tier counts its own elapsed seconds, so skipping or deferring one does
 not shift the others. A longer rest satisfies the shorter ones: a long break
@@ -41,8 +41,8 @@ with `omarchy bar move amsi.omablink --section right`, or reorder the entry in
 | Panel — stats and every setting | Left-click the widget |
 | Eye break now | Right-click the widget |
 | Pause / resume | Middle-click the widget |
-| Skip a running break | `Esc`, or the Skip button (not on a lock break) |
-| Postpone a running break | `Space`, or the +5 min button |
+| Skip a running break | hold `Esc`, or the Skip button (not on a lock break) |
+| Postpone a running break | hold `Space`, or the +5 min button |
 
 Keybindings are yours to add — in `~/.config/hypr/bindings.lua`:
 
@@ -87,11 +87,13 @@ Everything it writes lands in the widget's entry in
 | `blinkMinutes` / `blinkHintSeconds` | 5 / 2 | Blink hint interval and how long it shows |
 | `blinkEnabled` | true | Blink hints on |
 | `headsUpSeconds` | 60 | Notification this long before a break (0 = off) |
-| `postponeMinutes` | 5 | What `Space` adds |
+| `postponeMinutes` | 5 | What a postpone adds |
 | `idleMinutes` | 3 | Absence after which the timers hold |
 | `pauseOnFullscreen` | true | Hold while a window is fullscreen |
 | `pauseOnMicrophone` | true | Hold while an app captures the microphone |
 | `pauseOnVideo` | true | Hold while a camera or screen share is live |
+| `pauseOnMeeting` | true | Hold while a window matching `meetingPattern` is open |
+| `meetingPattern` | Meet/Zoom/Teams/Webex/Jitsi/huddle | Regex matched against every window's title and class |
 | `pauseOnIdle` | true | Hold while away |
 
 ## Holds
@@ -103,9 +105,16 @@ widget's tooltip says what it is waiting for.
 `bin/omablink-pause-check` prints one reason per line and is called once per
 due break rather than polled (~40 ms):
 
-- **Microphone, not window titles.** Google Meet and Slack huddles live in
-  browser tabs with no window of their own; the capture stream is the only
-  signal that catches them.
+- **Microphone.** Google Meet and Slack huddles live in browser tabs with no
+  window of their own, so the capture stream is what catches them — while the
+  microphone is live. Muting drops the stream, which is what the meeting
+  pattern below is for.
+- **A meeting window**, matched by regex against every window's title and
+  class. Catches the listen-only call that holds neither microphone nor
+  camera. Keep the pattern narrow: one that also matches the chat client
+  sitting open all day would defer every break forever. A call in a browser
+  tab that is not its window's active tab is invisible here — Wayland only
+  ever exposes the active tab's title.
 - **A PipeWire video node** covers both the camera and a screen share through
   xdg-desktop-portal, which are the same answer: do not cover the screen.
 - **Fullscreen** comes from `hyprctl activewindow -j`.
@@ -114,7 +123,15 @@ due break rather than polled (~40 ms):
   the eye timer. Coming back from an absence longer than one break counts as
   the break itself.
 
-The lock break calls Omarchy's own lock service (`omarchy-shell lock lock`),
+Skipping is a hold rather than a tap: the overlay owns the keyboard while it
+is up, and a single `Esc` — the most common keystroke there is, if you live in
+vim — used to dismiss the break before it had finished drawing.
+
+The lock break switches the keyboard to the first entry of `kb_layout` before
+locking (`hyprctl switchxkblayout all 0`): hyprlock types through whatever
+layout is active, so locking on a non-Latin layout leaves a password that
+cannot be typed. It then calls Omarchy's own lock service (`omarchy-shell lock
+lock`),
 which needs PAM configured for the password prompt; `omarchy-shell lock status`
 reports `passwordPam`.
 

@@ -232,6 +232,7 @@ Panel {
           { key: "pauseOnFullscreen", label: "Hold on fullscreen" },
           { key: "pauseOnMicrophone", label: "Hold on calls (microphone)" },
           { key: "pauseOnVideo", label: "Hold on camera or screen share" },
+          { key: "pauseOnMeeting", label: "Hold while a meeting window is open" },
           { key: "pauseOnIdle", label: "Hold while away" }
         ]
 
