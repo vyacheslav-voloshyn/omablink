@@ -497,6 +497,7 @@ BarWidget {
       item.total = Model.tierDuration(root.breakKind, root.config)
       item.kind = root.breakKind
       item.skippable = root.breakKind !== "lock"
+      item.postponeMinutes = Math.round(root.config.postponeSeconds / 60)
       item.remaining = root.breakRemaining
       item.skipRequested.connect(function () { root.broadcast("skipBreak") })
       item.postponeRequested.connect(function () { root.broadcast("postponeBreak") })

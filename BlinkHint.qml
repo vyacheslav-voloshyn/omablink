@@ -3,79 +3,103 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 
-// The blink reminder: two eyelids sweep in from the edges, meet for an
-// instant and open again, with a short caption in the gap.
+// The blink reminder: a small card in the top-right corner whose eye blinks
+// twice, then slides away.
 //
-// Deliberately not a notification — one of these every five minutes would
+// Deliberately not a notification — one of these every few minutes would
 // bury the notification history in noise, and it must not need dismissing.
-// The earlier version was a small strip under the bar, which is exactly the
-// kind of thing peripheral vision filters out; a screen-wide gesture is seen
-// without being read.
+// It also never covers what you are reading: a screen-wide sweep every few
+// minutes broke concentration more than it rested the eyes.
 PanelWindow {
   id: hint
 
   property bool shown: false
   property string message: "Blink"
+  property string detail: "slowly, twice"
 
-  // The window stays mapped for the whole sweep, so visibility follows the
-  // animation rather than `shown` directly.
-  visible: shown || lids.progress > 0.001
+  property real appear: shown ? 1 : 0
+  Behavior on appear {
+    NumberAnimation { duration: Style.duration(hint.shown ? 180 : 120); easing.type: Easing.OutCubic }
+  }
 
-  anchors { top: true; bottom: true; left: true; right: true }
+  // The window stays mapped until the card has slid out.
+  visible: shown || appear > 0.001
+
+  anchors { top: true; right: true }
+  margins { top: Style.space(12); right: Style.space(12) }
+  implicitWidth: card.width
+  implicitHeight: card.height
   color: "transparent"
   WlrLayershell.namespace: "omarchy-omablink-blink"
   WlrLayershell.layer: WlrLayer.Overlay
   // Never takes focus and never takes a click: the hint appears while you are
   // typing, and interrupting that would be worse than the dry eyes.
   WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-  exclusionMode: ExclusionMode.Ignore
+  // Normal, not Ignore: the card sits under the bar instead of on top of it.
+  exclusionMode: ExclusionMode.Normal
   mask: Region {}
 
   onShownChanged: if (shown) blink.restart()
 
-  Item {
-    id: lids
-    anchors.fill: parent
+  Rectangle {
+    id: card
+    width: row.implicitWidth + Style.spacing.panelPadding * 2
+    height: row.implicitHeight + Style.spacing.panelPadding * 1.2
+    radius: Style.cornerRadius
+    color: Color.popups.background
+    border.width: 1
+    border.color: Qt.rgba(Color.popups.border.r, Color.popups.border.g, Color.popups.border.b, 0.6)
+    opacity: hint.appear
+    transform: Translate { x: (1 - hint.appear) * Style.space(24) }
 
-    // 0 is open, 1 is shut. One value drives both lids and the caption, so
-    // they cannot drift apart.
-    property real progress: 0
-
-    // Close faster than it opens: a real blink snaps shut and rolls back up.
-    SequentialAnimation {
-      id: blink
-      NumberAnimation { target: lids; property: "progress"; to: 1; duration: 220; easing.type: Easing.InQuad }
-      PauseAnimation { duration: 90 }
-      NumberAnimation { target: lids; property: "progress"; to: 0; duration: 520; easing.type: Easing.OutCubic }
-    }
-
-    Rectangle {
-      width: parent.width
-      height: parent.height * 0.5 * lids.progress
-      anchors.top: parent.top
-      color: Color.background
-      opacity: 0.92
-    }
-
-    Rectangle {
-      width: parent.width
-      height: parent.height * 0.5 * lids.progress
-      anchors.bottom: parent.bottom
-      color: Color.background
-      opacity: 0.92
-    }
-
-    Text {
+    Row {
+      id: row
       anchors.centerIn: parent
-      text: hint.message
-      color: Color.accent
-      font.family: Style.font.family
-      font.pixelSize: Math.round(Style.font.displayLarge * 1.7)
-      font.bold: true
-      // Only legible while the lids are near shut, which is also when the
-      // background behind it is covered.
-      opacity: Math.max(0, lids.progress * 1.6 - 0.6)
-      scale: 0.92 + lids.progress * 0.08
+      spacing: Style.space(12)
+
+      EyeGlyph {
+        id: eye
+        anchors.verticalCenter: parent.verticalCenter
+        width: Style.space(30)
+        height: Style.space(30)
+        lineColor: Color.popups.text
+        irisColor: Color.accent
+      }
+
+      Column {
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Style.space(1)
+
+        Text {
+          textFormat: Text.PlainText
+          text: hint.message
+          color: Color.popups.text
+          font.family: Style.font.family
+          font.pixelSize: Style.font.title
+          font.bold: true
+        }
+        Text {
+          textFormat: Text.PlainText
+          text: hint.detail
+          color: Qt.rgba(Color.popups.text.r, Color.popups.text.g, Color.popups.text.b, 0.6)
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+        }
+      }
+    }
+  }
+
+  // Shut faster than it opens: a real blink snaps closed and rolls back up.
+  // Starts after the card has arrived so the first blink is actually seen.
+  SequentialAnimation {
+    id: blink
+    PauseAnimation { duration: Style.duration(220) }
+    SequentialAnimation {
+      loops: 2
+      NumberAnimation { target: eye; property: "openness"; to: 0; duration: Style.duration(110); easing.type: Easing.InQuad }
+      PauseAnimation { duration: Style.duration(60) }
+      NumberAnimation { target: eye; property: "openness"; to: 1; duration: Style.duration(220); easing.type: Easing.OutCubic }
+      PauseAnimation { duration: Style.duration(160) }
     }
   }
 }

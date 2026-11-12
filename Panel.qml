@@ -6,13 +6,13 @@ import "Model.js" as Model
 
 // The widget's popover: today's numbers, the schedule, the hold conditions.
 //
-// Omarchy 4.0.3 stores a bar widget's `settingsForm` in the plugin metadata
-// but never renders it (shell.qml:1407 is the only reader), so there is no
-// host settings dialog to hook into — this panel is the settings window.
+// Omarchy stores a bar widget's `settingsForm` in the plugin metadata but
+// never renders it, so there is no host settings dialog to hook into — this
+// panel is the settings window.
 //
 // Laid out to stay under a screen height without scrolling: the schedule is a
 // two-column grid and the switches are single-line rows, because the stock
-// Toggle row is 54px tall and seven of them alone overran the card.
+// Toggle row is 54px tall and eight of them alone overran the card.
 //
 // It owns no state: values come from the host widget and every edit leaves
 // through settingChanged, so shell.json stays the single source of truth.
@@ -40,15 +40,18 @@ Panel {
     lockMinutes: 45, blinkMinutes: 5
   })
 
+  // The popup's text colour, not the bar's: `barForeground` is the colour of
+  // text on the bar itself, which on a light bar is dark — and the popup
+  // card is dark whatever the bar does.
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.6)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // The bar collapses its center section 120ms after the pointer leaves it
   // (Bar.qml centerSectionRevealTimer), which pulls the button this panel is
   // anchored to out from under it — the popup then closes on its own a moment
   // after opening. Every first-party center panel suppresses that collapse
-  // while it is up; without it the panel looked like it "opens only the first
-  // time", because opening it without the pointer on the bar closed it again
-  // immediately.
+  // while it is up.
   function setCenterHoverRevealSuppressed(value) {
     if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
       root.bar.setCenterHoverRevealSuppressed(value)
@@ -88,8 +91,7 @@ Panel {
     centerOnBar: true
     focusTarget: keyCatcher
     // KeyboardPanel's own helpers: they add the card's vertical inset and
-    // clamp to what actually fits on screen. Guessing the slack by hand left
-    // the footer outside the card and the height unclamped.
+    // clamp to what actually fits on screen.
     contentWidth: panel.fittedContentWidth(Style.space(400))
     contentHeight: panel.fittedContentHeight(layout.implicitHeight)
 
@@ -108,8 +110,17 @@ Panel {
         width: parent.width
         title: "Omablink"
         meta: root.statusText
-        foreground: root.barForeground
+        foreground: root.foreground
         fontFamily: root.fontFamily
+        iconComponent: Component {
+          EyeGlyph {
+            width: Style.font.display
+            height: Style.font.display
+            openness: root.paused ? 0 : 1
+            lineColor: root.foreground
+            irisColor: Color.accent
+          }
+        }
       }
 
       // --- today ------------------------------------------------------------
@@ -117,7 +128,7 @@ Panel {
       PanelSectionHeader {
         width: parent.width
         text: "TODAY"
-        foreground: root.barForeground
+        foreground: root.foreground
         fontFamily: root.fontFamily
       }
 
@@ -125,7 +136,7 @@ Panel {
         width: parent.width
         columns: 3
         rowSpacing: Style.spacing.sm
-        columnSpacing: Style.spacing.md
+        columnSpacing: Style.spacing.sm
 
         Repeater {
           model: [
@@ -137,24 +148,35 @@ Panel {
             { label: "screen time", value: Model.formatDuration(root.day.screenSeconds) }
           ]
 
-          Row {
+          Rectangle {
             required property var modelData
-            width: (layout.width - Style.spacing.md * 2) / 3
-            spacing: Style.spacing.sm
+            width: (layout.width - Style.spacing.sm * 2) / 3
+            height: tile.implicitHeight + Style.space(14)
+            radius: Style.cornerRadius
+            color: Style.normalFillFor(root.foreground, Color.accent)
 
-            Text {
-              anchors.baseline: caption.baseline
-              text: modelData.value
-              color: Color.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.subtitle
-            }
-            Text {
-              id: caption
-              text: modelData.label
-              color: Color.muted
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+            Column {
+              id: tile
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(1)
+
+              Text {
+                textFormat: Text.PlainText
+                text: modelData.value
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.heading
+                font.bold: true
+              }
+              Text {
+                textFormat: Text.PlainText
+                text: modelData.label
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
             }
           }
         }
@@ -167,47 +189,97 @@ Panel {
       PanelSectionHeader {
         width: parent.width
         text: "SCHEDULE"
-        foreground: root.barForeground
+        foreground: root.foreground
         fontFamily: root.fontFamily
       }
 
       Grid {
         width: parent.width
         columns: 2
-        rowSpacing: Style.spacing.sm
+        rowSpacing: Style.spacing.md
         columnSpacing: Style.spacing.md
 
+        // Explicit − / + buttons with a sensible step per field instead of a
+        // SpinBox: its arrows were nearly invisible slivers at the field's
+        // edges, and one stray click there quietly rewrote the schedule.
         Repeater {
           model: [
-            { key: "workMinutes", label: "eye break every, min", from: 1, to: 180 },
-            { key: "breakSeconds", label: "eye break length, s", from: 5, to: 300 },
-            { key: "longMinutes", label: "long break every, min", from: 15, to: 600 },
-            { key: "longSeconds", label: "long break length, s", from: 30, to: 900 },
-            { key: "lockMinutes", label: "lock screen every, min", from: 10, to: 600 },
-            { key: "blinkMinutes", label: "blink hint every, min", from: 1, to: 120 }
+            { key: "workMinutes", label: "eye break every", unit: "min", from: 1, to: 180, step: 5 },
+            { key: "breakSeconds", label: "eye break length", unit: "s", from: 5, to: 300, step: 5 },
+            { key: "longMinutes", label: "long break every", unit: "min", from: 15, to: 600, step: 15 },
+            { key: "longSeconds", label: "long break length", unit: "s", from: 30, to: 900, step: 15 },
+            { key: "lockMinutes", label: "lock screen every", unit: "min", from: 10, to: 600, step: 5 },
+            { key: "blinkMinutes", label: "blink hint every", unit: "min", from: 1, to: 120, step: 1 }
           ]
 
           Column {
+            id: cell
             required property var modelData
+            readonly property int value: root.numberSetting(modelData.key)
             width: (layout.width - Style.spacing.md) / 2
-            spacing: 2
+            spacing: Style.space(3)
+
+            function stepBy(direction) {
+              var next = Model.stepValue(cell.value, cell.modelData.step, direction,
+                                         cell.modelData.from, cell.modelData.to)
+              if (next !== cell.value) root.settingChanged(cell.modelData.key, next)
+            }
 
             Text {
               width: parent.width
-              text: modelData.label
-              color: Color.muted
+              textFormat: Text.PlainText
+              text: cell.modelData.label
+              color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               elide: Text.ElideRight
             }
 
-            NumberField {
-              value: root.numberSetting(modelData.key)
-              from: modelData.from
-              to: modelData.to
-              stepSize: 1
-              fieldWidth: parent.width
-              onModified: function (next) { root.settingChanged(modelData.key, next) }
+            Item {
+              width: parent.width
+              height: Style.spacing.controlHeight
+
+              Button {
+                id: minus
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: height
+                height: parent.height
+                text: "−"
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: cell.value > cell.modelData.from
+                opacity: enabled ? 1 : 0.35
+                onClicked: cell.stepBy(-1)
+              }
+
+              Text {
+                anchors.left: minus.right
+                anchors.right: plus.left
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignHCenter
+                textFormat: Text.PlainText
+                text: cell.value + " " + cell.modelData.unit
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+              }
+
+              Button {
+                id: plus
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: height
+                height: parent.height
+                text: "+"
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: cell.value < cell.modelData.to
+                opacity: enabled ? 1 : 0.35
+                onClicked: cell.stepBy(1)
+              }
             }
           }
         }
@@ -220,63 +292,71 @@ Panel {
       PanelSectionHeader {
         width: parent.width
         text: "BREAKS AND HOLDS"
-        foreground: root.barForeground
+        foreground: root.foreground
         fontFamily: root.fontFamily
       }
 
-      Repeater {
-        model: [
-          { key: "longEnabled", label: "Long breaks" },
-          { key: "lockEnabled", label: "Lock the screen (no skip)" },
-          { key: "blinkEnabled", label: "Blink hints" },
-          { key: "pauseOnFullscreen", label: "Hold on fullscreen" },
-          { key: "pauseOnMicrophone", label: "Hold on calls (microphone)" },
-          { key: "pauseOnVideo", label: "Hold on camera or screen share" },
-          { key: "pauseOnMeeting", label: "Hold while a meeting window is open" },
-          { key: "pauseOnIdle", label: "Hold while away" }
-        ]
+      Column {
+        width: parent.width
+        spacing: 0
 
-        Rectangle {
-          id: switchRow
-          required property var modelData
-          readonly property bool on: Model.boolSetting(root.setting(modelData.key, true), true)
+        Repeater {
+          model: [
+            { key: "longEnabled", label: "Long breaks" },
+            { key: "lockEnabled", label: "Lock the screen (no skip)" },
+            { key: "blinkEnabled", label: "Blink hints" },
+            { key: "pauseOnFullscreen", label: "Hold on fullscreen" },
+            { key: "pauseOnMicrophone", label: "Hold on calls (microphone)" },
+            { key: "pauseOnVideo", label: "Hold on camera or screen share" },
+            { key: "pauseOnMeeting", label: "Hold while a meeting window is open" },
+            { key: "pauseOnIdle", label: "Hold while away" }
+          ]
 
-          width: layout.width
-          height: Style.spacing.controlHeight + 4
-          radius: Style.cornerRadius
-          color: rowMouse.containsMouse
-            ? Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, Style.hoverFillAlpha)
-            : "transparent"
+          Rectangle {
+            id: switchRow
+            required property var modelData
+            readonly property bool on: Model.boolSetting(root.setting(modelData.key, true), true)
 
-          Behavior on color { ColorAnimation { duration: 120 } }
+            width: layout.width
+            height: Style.spacing.controlHeight + Style.space(4)
+            radius: Style.cornerRadius
+            color: rowMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
 
-          Text {
-            anchors.left: parent.left
-            anchors.leftMargin: Style.spacing.sm
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - toggle.width - Style.spacing.md * 2
-            text: switchRow.modelData.label
-            color: switchRow.on ? Color.foreground : Color.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            elide: Text.ElideRight
-          }
+            Behavior on color { ColorAnimation { duration: Style.duration(120) } }
 
-          ToggleSwitch {
-            id: toggle
-            anchors.right: parent.right
-            anchors.rightMargin: Style.spacing.sm
-            anchors.verticalCenter: parent.verticalCenter
-            checked: switchRow.on
-            // The row owns the click, so the switch is decoration with state.
-            interactive: false
-          }
+            Text {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.spacing.lg
+              anchors.right: toggle.left
+              anchors.rightMargin: Style.spacing.md
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: switchRow.modelData.label
+              color: switchRow.on ? root.foreground : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              elide: Text.ElideRight
+            }
 
-          MouseArea {
-            id: rowMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: root.settingChanged(switchRow.modelData.key, !switchRow.on)
+            ToggleSwitch {
+              id: toggle
+              anchors.right: parent.right
+              anchors.rightMargin: Style.spacing.sm
+              anchors.verticalCenter: parent.verticalCenter
+              checked: switchRow.on
+              foreground: root.foreground
+              trackHeight: Math.round(Style.spacing.controlHeight * 0.6)
+              // The row owns the click, so the switch is decoration with state.
+              interactive: false
+            }
+
+            MouseArea {
+              id: rowMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.settingChanged(switchRow.modelData.key, !switchRow.on)
+            }
           }
         }
       }
@@ -284,7 +364,8 @@ Panel {
       PanelSeparator { width: parent.width }
 
       Row {
-        anchors.horizontalCenter: parent.horizontalCenter
+        id: actionRow
+        width: parent.width
         spacing: Style.spacing.sm
 
         Repeater {
@@ -294,36 +375,17 @@ Panel {
             { action: "togglePause", label: root.paused ? "Resume" : "Pause" }
           ]
 
-          Rectangle {
+          Button {
             required property var modelData
-            width: buttonCaption.implicitWidth + Style.spacing.panelPadding
-            height: Style.spacing.controlHeight
-            radius: Style.cornerRadius
-            color: area.containsMouse
-              ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, Style.hoverFillAlpha * 2)
-              : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, Style.normalFillAlpha)
-            border.width: 1
-            border.color: Qt.rgba(Color.muted.r, Color.muted.g, Color.muted.b, Style.normalBorderAlpha)
-
-            Behavior on color { ColorAnimation { duration: 140 } }
-
-            Text {
-              id: buttonCaption
-              anchors.centerIn: parent
-              text: modelData.label
-              color: area.containsMouse ? Color.accent : Color.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-            }
-
-            MouseArea {
-              id: area
-              anchors.fill: parent
-              hoverEnabled: true
-              onClicked: {
-                root.actionRequested(modelData.action)
-                if (modelData.action !== "togglePause") root.close()
-              }
+            width: (actionRow.width - actionRow.spacing * 2) / 3
+            text: modelData.label
+            bordered: true
+            selected: modelData.action === "togglePause" && root.paused
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: {
+              root.actionRequested(modelData.action)
+              if (modelData.action !== "togglePause") root.close()
             }
           }
         }
@@ -336,23 +398,17 @@ Panel {
         spacing: Style.spacing.sm
 
         Text {
-          text: "omablink"
-          color: Color.muted
+          textFormat: Text.PlainText
+          text: "omablink ·"
+          color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
         }
 
         Text {
-          text: "·"
-          color: Color.muted
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        Text {
-          id: sponsor
+          textFormat: Text.PlainText
           text: "sponsor"
-          color: sponsorMouse.containsMouse ? Color.accent : Color.muted
+          color: sponsorMouse.containsMouse ? Color.accent : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
           font.underline: sponsorMouse.containsMouse

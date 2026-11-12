@@ -17,6 +17,13 @@ assert.strictEqual(Model.boolSetting("false", true), false)
 assert.strictEqual(Model.boolSetting(undefined, true), true)
 assert.strictEqual(Model.boolSetting("yes", false), false)
 
+assert.strictEqual(Model.stepValue(20, 5, 1, 1, 180), 25)
+assert.strictEqual(Model.stepValue(20, 5, -1, 1, 180), 15)
+assert.strictEqual(Model.stepValue(23, 5, 1, 1, 180), 25)
+assert.strictEqual(Model.stepValue(23, 5, -1, 1, 180), 20)
+assert.strictEqual(Model.stepValue(5, 5, -1, 1, 180), 1)
+assert.strictEqual(Model.stepValue(180, 5, 1, 1, 180), 180)
+
 // Labels round up, so the bar never shows "0m" while a minute is still left.
 assert.strictEqual(Model.formatRemaining(45), "45s")
 assert.strictEqual(Model.formatRemaining(59), "59s")

@@ -14,6 +14,15 @@ function clampNumber(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.round(number)))
 }
 
+// One press of a schedule stepper. Snaps to the step grid first, so a
+// hand-edited 23 goes to 20 or 25 rather than 18 or 28.
+function stepValue(value, step, direction, min, max) {
+  var snapped = direction > 0
+    ? Math.floor(value / step) * step + step
+    : Math.ceil(value / step) * step - step
+  return Math.max(min, Math.min(max, snapped))
+}
+
 function boolSetting(value, fallback) {
   if (value === true || value === false) return value
   if (value === "true") return true
@@ -72,6 +81,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     clampNumber: clampNumber,
     boolSetting: boolSetting,
+    stepValue: stepValue,
     formatRemaining: formatRemaining,
     idleCreditsBreak: idleCreditsBreak,
     parsePauseReasons: parsePauseReasons,
