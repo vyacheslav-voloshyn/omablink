@@ -3,7 +3,7 @@
 A screen-break timer for the [Omarchy](https://omarchy.org) bar: look away,
 stand up, blink — and it waits while you are on a call.
 
-![Break screen](assets/break.png)
+![Omablink: blink hint, eye in the bar, break screen](assets/demo.gif)
 
 ## Install
 
