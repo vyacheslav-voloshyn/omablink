@@ -13,7 +13,12 @@ omarchy plugin add https://github.com/vyacheslav-voloshyn/omablink.git --enable
 
 A countdown appears in the bar ![Bar widget](assets/bar.png). **Click** it for
 stats and settings, **right-click** for a break now, **middle-click** to pause.
-Tested on Omarchy 4.5.
+Tested on Omarchy 4.5. Nothing to install beyond Omarchy itself: it uses
+`hyprctl`, `pw-dump`, `pactl` and `notify-send`, which Omarchy ships.
+
+To remove it: `omarchy plugin remove amsi.omablink`, then `omarchy restart shell`.
+Its settings live only in the widget's entry in `~/.config/omarchy/shell.json`,
+and its daily stats in `~/.local/state/omarchy/omablink.json`.
 
 ## Reminders
 
