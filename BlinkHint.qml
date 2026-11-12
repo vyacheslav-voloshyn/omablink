@@ -1,10 +1,12 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 
-// The blink reminder: a small card in the top-right corner whose eye blinks
-// twice, then slides away.
+// The blink reminder: a small card in the top-right corner, with the break
+// screen's fog drifting inside it, whose eye blinks twice before it slides
+// away.
 //
 // Deliberately not a notification — one of these every few minutes would
 // bury the notification history in noise, and it must not need dismissing.
@@ -47,10 +49,44 @@ PanelWindow {
     height: row.implicitHeight + Style.spacing.panelPadding * 1.2
     radius: Style.cornerRadius
     color: Color.popups.background
-    border.width: 1
-    border.color: Qt.rgba(Color.popups.border.r, Color.popups.border.g, Color.popups.border.b, 0.6)
     opacity: hint.appear
     transform: Translate { x: (1 - hint.appear) * Style.space(24) }
+
+    // Masked to the card's corners: a plain clip is rectangular, and on a
+    // theme with rounded corners the fog would show past them.
+    Fog {
+      anchors.fill: parent
+      visible: hint.visible
+      resolution: 1
+      density: 0.5
+      vignette: 0
+      fogColor: Color.popups.text
+      glowColor: Color.accent
+      shadeColor: Color.popups.background
+      layer.enabled: true
+      layer.effect: MultiEffect {
+        maskEnabled: true
+        maskSource: cardMask
+        maskThresholdMin: 0.5
+        maskSpreadAtMin: 1.0
+      }
+    }
+
+    Rectangle {
+      id: cardMask
+      anchors.fill: parent
+      radius: card.radius
+      visible: false
+      layer.enabled: true
+    }
+
+    Rectangle {
+      anchors.fill: parent
+      radius: card.radius
+      color: "transparent"
+      border.width: 1
+      border.color: Qt.rgba(Color.popups.border.r, Color.popups.border.g, Color.popups.border.b, 0.6)
+    }
 
     Row {
       id: row

@@ -24,6 +24,11 @@ assert.strictEqual(Model.stepValue(23, 5, -1, 1, 180), 20)
 assert.strictEqual(Model.stepValue(5, 5, -1, 1, 180), 1)
 assert.strictEqual(Model.stepValue(180, 5, 1, 1, 180), 180)
 
+assert.strictEqual(Model.tierTip("micro", 0, 5), "Find something at least six metres away")
+assert.strictEqual(Model.tierTip("micro", 5, 5), "Let your focus soften on it")
+assert.strictEqual(Model.tierTip("micro", 20, 5), "Find something at least six metres away")
+assert.strictEqual(Model.tierTip("unknown", 0, 5), Model.tierTip("micro", 0, 5))
+
 // Labels round up, so the bar never shows "0m" while a minute is still left.
 assert.strictEqual(Model.formatRemaining(45), "45s")
 assert.strictEqual(Model.formatRemaining(59), "59s")

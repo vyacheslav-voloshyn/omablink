@@ -141,23 +141,45 @@ function tierDuration(kind, settings) {
 }
 
 var TIER_TITLES = {
-  micro: "Look away",
+  micro: "Look far away",
   long: "Stand up",
   lock: "Locking the screen"
 }
 
-var TIER_SUBTITLES = {
-  micro: "20 feet away, until the count runs out",
-  long: "Walk, stretch, refill the water",
-  lock: "Step away — the screen locks when the count ends"
+// What to do with the break, one line at a time. The eye-break lines are the
+// 20-20-20 exercise itself: refocus far, then relax the muscles that hold the
+// near focus.
+var TIER_TIPS = {
+  micro: [
+    "Find something at least six metres away",
+    "Let your focus soften on it",
+    "Blink slowly, a few times",
+    "Relax your jaw and shoulders"
+  ],
+  long: [
+    "Get up from the chair",
+    "Roll your shoulders back, slowly",
+    "Walk to the window, or refill your water",
+    "Look outside, as far as you can see"
+  ],
+  lock: [
+    "Save what you are working on",
+    "Stand up and step away",
+    "The screen locks when the line runs out"
+  ]
 }
 
 function tierTitle(kind) {
   return TIER_TITLES[kind] || TIER_TITLES.micro
 }
 
-function tierSubtitle(kind) {
-  return TIER_SUBTITLES[kind] || TIER_SUBTITLES.micro
+// The tip shown `elapsed` seconds into a break, changing every `period`
+// seconds and wrapping round, so a long break cycles rather than running out.
+function tierTip(kind, elapsed, period) {
+  var tips = TIER_TIPS[kind] || TIER_TIPS.micro
+  var step = Math.max(1, Math.round(Number(period) || 1))
+  var index = Math.floor(Math.max(0, Number(elapsed) || 0) / step) % tips.length
+  return tips[index]
 }
 
 // Seconds until the next break of any enabled tier, for the bar label.
@@ -245,7 +267,7 @@ if (typeof module !== "undefined") {
   module.exports.tiersResetBy = tiersResetBy
   module.exports.tierDuration = tierDuration
   module.exports.tierTitle = tierTitle
-  module.exports.tierSubtitle = tierSubtitle
+  module.exports.tierTip = tierTip
   module.exports.secondsToNext = secondsToNext
   module.exports.dayKey = dayKey
   module.exports.emptyDay = emptyDay

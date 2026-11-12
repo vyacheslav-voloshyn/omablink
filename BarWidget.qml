@@ -168,7 +168,13 @@ BarWidget {
     root.overlayShown = true
   }
 
-  function finishOverlay() {
+  // `exit` says how the break ended, which picks the overlay's finale; the
+  // window stays until that has played.
+  function finishOverlay(exit) {
+    if (overlayLoader.item) {
+      overlayLoader.item.exit = exit
+      fadeOut.interval = Math.max(1, overlayLoader.item.exitMillis)
+    }
     root.overlayShown = false
     fadeOut.restart()
     // Breaks are the numbers worth keeping, so they are written straight
@@ -194,28 +200,28 @@ BarWidget {
       bump(kind === "long" ? "long" : "micro")
     }
     resetTier(kind)
-    finishOverlay()
+    finishOverlay(kind === "lock" ? "lock" : "done")
   }
 
   function skipBreak() {
     if (!root.breaking) return
     // The lock break is the one that cannot be waved away — that is the
     // whole point of having it as a separate tier.
-    if (root.breakKind === "lock") return
+    if (root.breakKind === "lock" || !root.overlayShown) return
     bump("skipped")
     resetTier(root.breakKind)
-    finishOverlay()
+    finishOverlay("skip")
   }
 
   function postponeBreak() {
-    if (!root.breaking || root.breakKind === "lock") return
+    if (!root.breaking || root.breakKind === "lock" || !root.overlayShown) return
     bump("postponed")
     var next = { micro: root.elapsed.micro, long: root.elapsed.long, lock: root.elapsed.lock }
     next[root.breakKind] = Math.max(0, Model.tierPeriod(root.breakKind, root.config) - root.config.postponeSeconds)
     root.elapsed = next
     root.headsUpFor = ""
     root.deferReason = ""
-    finishOverlay()
+    finishOverlay("skip")
   }
 
   function togglePause() {
@@ -347,6 +353,8 @@ BarWidget {
 
     onTriggered: {
       if (root.breaking) {
+        // The finale is still playing; the break itself is already over.
+        if (!root.overlayShown) return
         root.breakRemaining -= 1
         if (root.breakRemaining <= 0) root.completeBreak()
         return
