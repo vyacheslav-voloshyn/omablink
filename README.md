@@ -24,6 +24,10 @@ Tested on Omarchy 4.5.
 | Screen lock, after a countdown | every 45 min | no |
 | Blink hint, a corner card ![Blink hint](assets/blink.png) | every 5 min | goes by itself |
 
+During a break your screen drifts out of focus into fog that breathes on a
+six-second cycle, with a tip on what to do; when it ends, the fog clears and
+the screen comes back sharp. A lock break darkens instead, like dusk.
+
 Hold `Space` to postpone a break by 5 min. A notification comes a minute
 before each break. A longer break resets the shorter timers.
 
