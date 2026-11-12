@@ -44,6 +44,8 @@ BarWidget {
     pauseOnVideo: Model.boolSetting(setting("pauseOnVideo", true), true),
     pauseOnIdle: Model.boolSetting(setting("pauseOnIdle", true), true),
     pauseOnMeeting: Model.boolSetting(setting("pauseOnMeeting", true), true),
+    barIcon: Model.boolSetting(setting("barIcon", true), true),
+    barIconAnimated: Model.boolSetting(setting("barIconAnimated", true), true),
     // Matched against every window's title and class. A muted listener holds
     // no microphone and no camera, so the window is the only thing left to
     // look at. Deliberately narrow: a pattern that also matches the chat app
@@ -377,14 +379,16 @@ BarWidget {
       }
       root.bump("screenSeconds", 1)
 
+      // The bar eye blinks every ten seconds through the last minute, so a
+      // break is seen coming before the notification even arrives.
+      if (root.secondsToNext <= 60 && root.secondsToNext % 10 === 0) root.blinkEye()
+
       if (root.config.blinkEnabled) {
         root.blinkElapsed += 1
         if (root.blinkElapsed >= root.config.blinkMinutes * 60) {
           root.blinkElapsed = 0
           root.bump("blinks")
-          blinkHint.shown = true
-          blinkTimer.interval = root.config.blinkSeconds * 1000
-          blinkTimer.restart()
+          root.showBlinkHint(root.config.blinkSeconds)
         }
       }
 
@@ -595,8 +599,26 @@ BarWidget {
     function panel(): void { root.broadcast("togglePanel") }
     function open(): void { root.open() }
     function close(): void { root.close() }
-    function blink(): void { blinkHint.shown = true; blinkTimer.interval = 2000; blinkTimer.restart() }
+    function blink(): void { root.showBlinkHint(2) }
   }
+
+  function showBlinkHint(seconds) {
+    blinkHint.shown = true
+    blinkTimer.interval = seconds * 1000
+    blinkTimer.restart()
+    blinkEye()
+  }
+
+  function blinkEye() {
+    if (root.config.barIcon && root.config.barIconAnimated) eyeBlink.restart()
+  }
+
+  // The bar label is drawn here rather than by WidgetButton when the eye is
+  // on: WidgetButton centres a single text label and has no slot for an icon
+  // beside it. The button still owns the hit area, tooltip, dimming and the
+  // press feedback, which this content follows through pressScale.
+  readonly property bool showEye: root.config.barIcon && !root.vertical
+  readonly property color labelColor: root.breaking && root.bar ? root.bar.urgent : button.foreground
 
   WidgetButton {
     id: button
@@ -610,6 +632,51 @@ BarWidget {
     active: root.breaking
     horizontalMargin: 8.75
     verticalPadding: 8.75
+    labelVisible: !root.showEye
+    fixedWidth: root.showEye ? eyeRow.implicitWidth + button.scaledHorizontalMargin * 2 : -1
+
+    Row {
+      id: eyeRow
+      visible: root.showEye
+      anchors.centerIn: parent
+      spacing: Style.space(5)
+      scale: button.pressScale
+
+      EyeGlyph {
+        id: eye
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.round(Style.font.body * 1.45)
+        height: width
+        lineWidth: 1.5
+        lineColor: root.labelColor
+        irisColor: root.labelColor
+        // Shut while nothing is counting, so a paused timer reads at a glance.
+        // The blink animates `lid` and leaves `base` bound to the state.
+        property real base: root.paused || root.away ? 0 : 1
+        property real lid: 1
+        openness: base * lid
+        Behavior on base {
+          NumberAnimation { duration: Style.duration(180); easing.type: Easing.OutCubic }
+        }
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: root.displayText
+        color: root.labelColor
+        font.family: button.fontFamily
+        font.pixelSize: button.fontSize
+        renderType: Text.NativeRendering
+      }
+    }
+
+    SequentialAnimation {
+      id: eyeBlink
+      NumberAnimation { target: eye; property: "lid"; to: 0; duration: Style.duration(90); easing.type: Easing.InQuad }
+      PauseAnimation { duration: Style.duration(50) }
+      NumberAnimation { target: eye; property: "lid"; to: 1; duration: Style.duration(180); easing.type: Easing.OutCubic }
+    }
 
     onPressed: function (mouseButton) {
       if (mouseButton === Qt.RightButton) root.broadcast("startBreak")

@@ -305,6 +305,8 @@ Panel {
             { key: "longEnabled", label: "Long breaks" },
             { key: "lockEnabled", label: "Lock the screen (no skip)" },
             { key: "blinkEnabled", label: "Blink hints" },
+            { key: "barIcon", label: "Eye icon in the bar" },
+            { key: "barIconAnimated", label: "Animate the bar eye" },
             { key: "pauseOnFullscreen", label: "Hold on fullscreen" },
             { key: "pauseOnMicrophone", label: "Hold on calls (microphone)" },
             { key: "pauseOnVideo", label: "Hold on camera or screen share" },

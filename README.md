@@ -43,6 +43,7 @@ Everything is in the panel. It writes to the widget's entry in
 | `longEnabled`, `longMinutes` / `longSeconds` | true, 240 / 120 | Long break |
 | `lockEnabled`, `lockMinutes`, `lockCountdownSeconds` | true, 45, 30 | Screen lock |
 | `blinkEnabled`, `blinkMinutes` / `blinkHintSeconds` | true, 5 / 2 | Blink hint |
+| `barIcon`, `barIconAnimated` | true, true | Eye beside the countdown; it blinks with each hint and every 10 s in the last minute |
 | `headsUpSeconds` | 60 | Notice before a break, 0 = off |
 | `postponeMinutes` | 5 | What a postpone adds |
 | `idleMinutes` | 3 | Away time that stops the timers |
