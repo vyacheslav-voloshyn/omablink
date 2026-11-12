@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "amsi.omablink",
   "name": "Omablink",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "vyacheslav-voloshyn",
   "description": "Eye-rest, stand-up and screen-lock breaks with a blink hint and daily stats",
   "kinds": [
