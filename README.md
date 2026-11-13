@@ -13,8 +13,9 @@ omarchy plugin add https://github.com/vyacheslav-voloshyn/omablink.git --enable
 
 A countdown appears in the bar ![Bar widget](assets/bar.png). **Click** it for
 stats and settings, **right-click** for a break now, **middle-click** to pause.
-Tested on Omarchy 4.5. Nothing to install beyond Omarchy itself: it uses
-`hyprctl`, `pw-dump`, `pactl` and `notify-send`, which Omarchy ships.
+Tested on Omarchy 4.5. Nothing to install beyond Omarchy itself: it reads
+Hyprland and PipeWire through the shell's own Quickshell services and calls
+`notify-send`, which Omarchy ships.
 
 To remove it: `omarchy plugin remove amsi.omablink`, then `omarchy restart shell`.
 Its settings live only in the widget's entry in `~/.config/omarchy/shell.json`,
@@ -56,18 +57,48 @@ Everything is in the panel. It writes to the widget's entry in
 | `headsUpSeconds` | 60 | Notice before a break, 0 = off |
 | `postponeMinutes` | 5 | What a postpone adds |
 | `idleMinutes` | 3 | Away time that stops the timers |
-| `pauseOnFullscreen`, `pauseOnMicrophone`, `pauseOnVideo`, `pauseOnMeeting`, `pauseOnIdle` | true | Hold conditions, see below |
+| `pauseOnFullscreen`, `pauseOnMedia`, `pauseOnMicrophone`, `pauseOnVideo`, `pauseOnMeeting`, `pauseOnCalendar`, `pauseOnIdle` | true | Hold conditions, see below |
 | `meetingPattern` | Meet, Zoom, Teams, Webex, Jitsi, huddle | Regex over window titles and classes |
+| `calendarFile` | `~/.cache/omarchy-google-calendar/events.json` | Calendar events to hold for, see below |
 
 </details>
 
 ## Holds
 
 A break that comes due at a bad moment waits a minute at a time instead of
-being dropped. It waits while the microphone, the camera or a screen share is
-in use, while a meeting window is open, during fullscreen, and while you are
-away. Being away longer than a break counts as the break. The tooltip shows
-what it is waiting for.
+being dropped. It waits while:
+
+- a visible window is fullscreen, or plays a video (the player asks Hyprland
+  not to blank the screen);
+- an app records the microphone, or a camera or screen share runs through
+  PipeWire; recording a speaker's monitor (cava, EasyEffects) does not count;
+- a window matches `meetingPattern`, or the calendar has a meeting now;
+- you are typing or moving the mouse: the break waits for five quiet seconds,
+  at most half a minute;
+- you are away.
+
+Being away longer than a break counts as the break, but sitting still through
+a video or a call is watching, not away. While a hold is on, the bar dims,
+half-shuts the eye and names it in place of the countdown — `meeting`, `call`,
+`camera`, `video`, `fullscreen` or `typing`; the tooltip keeps the countdown.
+
+### Calendar
+
+A meeting is a timed, busy event with a join link or other attendees that you
+have not declined. Omarchy's Google Calendar plugin writes the default
+`calendarFile`; any other source can write the same shape:
+
+```json
+{ "events": [ {
+  "start": "2026-11-13T09:00:00Z", "end": "2026-11-13T09:30:00Z",
+  "allDay": false, "busy": true, "status": "", "joinUrl": "https://…",
+  "accountLabel": "you@example.com",
+  "attendees": [ { "email": "you@example.com", "status": "accepted" } ]
+} ] }
+```
+
+`accountLabel` names you among the attendees. The file is re-read whenever it
+changes.
 
 ## Command line
 

@@ -48,25 +48,114 @@ function idleCreditsBreak(idleSeconds, breakSeconds) {
   return Math.round(Number(idleSeconds) || 0) >= Math.round(Number(breakSeconds) || 0)
 }
 
-// The helper prints one reason per line; anything else on stdout (an error
-// from hyprctl, say) must not read as a reason to skip the break forever.
-var KNOWN_REASONS = ["fullscreen", "microphone", "video", "meeting"]
+// ---------------------------------------------------------------------------
+// Holds: reasons a due break waits instead of covering the screen.
+//
+// The QML gathers plain facts from Hyprland, PipeWire and the calendar cache;
+// deciding what they mean lives here so it runs under node.
+//
+//   facts.windows   [{ title, cls, visible, fullscreen, inhibitingIdle }]
+//   facts.captures  [{ audio, video, fromSink }] — active capture links only
+//   facts.events    calendar events, see calendarMeetingNow
+//   facts.now       epoch milliseconds
+// ---------------------------------------------------------------------------
 
-function parsePauseReasons(stdout) {
-  var lines = String(stdout || "").split("\n")
-  var reasons = []
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i].replace(/^\s+|\s+$/g, "").toLowerCase()
-    if (KNOWN_REASONS.indexOf(line) !== -1 && reasons.indexOf(line) === -1) reasons.push(line)
+function windowMatches(pattern, window) {
+  if (!pattern) return false
+  var re
+  try {
+    re = new RegExp(pattern, "i")
+  } catch (error) {
+    return false
   }
+  return re.test(window.title || "") || re.test(window.cls || "")
+}
+
+// A meeting is a timed, busy event with someone to meet: a join link or other
+// attendees. Focus blocks and all-day markers are busy too, but nobody is on
+// the other end, so the eyes still get their break. An invitation you declined
+// stays on the calendar and must not hold anything.
+function calendarMeetingNow(events, now) {
+  var list = events || []
+  for (var i = 0; i < list.length; i++) {
+    var event = list[i]
+    if (!event || event.allDay || event.busy === false || event.status === "cancelled") continue
+    var start = Date.parse(event.start)
+    var end = Date.parse(event.end)
+    if (!(start <= now && now < end)) continue
+    var attendees = Array.isArray(event.attendees) ? event.attendees : []
+    if (!event.joinUrl && attendees.length < 2) continue
+    var self = String(event.accountLabel || "").toLowerCase()
+    var declined = false
+    for (var j = 0; j < attendees.length; j++)
+      if (self !== "" && String(attendees[j].email || "").toLowerCase() === self
+          && attendees[j].status === "declined") declined = true
+    if (!declined) return true
+  }
+  return false
+}
+
+function holdReasons(facts, config) {
+  var reasons = []
+  var windows = facts.windows || []
+  var captures = facts.captures || []
+  var add = function (reason) { if (reasons.indexOf(reason) === -1) reasons.push(reason) }
+
+  for (var i = 0; i < windows.length; i++) {
+    var w = windows[i]
+    // A window on a hidden workspace plays to nobody.
+    if (!w.visible) continue
+    if (config.pauseOnFullscreen && w.fullscreen) add("fullscreen")
+    // Players ask the compositor not to blank the screen while a video runs;
+    // that request is the "someone is watching" signal.
+    if (config.pauseOnMedia && w.inhibitingIdle) add("media")
+  }
+  if (config.pauseOnMeeting)
+    for (var k = 0; k < windows.length; k++)
+      if (windowMatches(config.meetingPattern, windows[k])) add("meeting")
+
+  for (var c = 0; c < captures.length; c++) {
+    // Capturing a sink's monitor is a visualiser or an effects chain, not a call.
+    if (config.pauseOnMicrophone && captures[c].audio && !captures[c].fromSink) add("microphone")
+    if (config.pauseOnVideo && captures[c].video) add("video")
+  }
+
+  if (config.pauseOnCalendar && calendarMeetingNow(facts.events, facts.now)) add("calendar")
   return reasons
+}
+
+// Holds that mean someone is looking at the screen without touching it. Idle
+// input under them is not an absence, and must not count as a rested break.
+// Fullscreen alone is not one: the lock screen's screensaver is fullscreen.
+var WATCHING = ["media", "microphone", "video", "meeting", "calendar"]
+
+function isWatching(reasons) {
+  var list = reasons || []
+  for (var i = 0; i < list.length; i++) if (WATCHING.indexOf(list[i]) !== -1) return true
+  return false
+}
+
+// One word for the bar, strongest reason first: a meeting usually also holds
+// the microphone and plays video, and "meeting" is the one that explains it.
+var BAR_WORDS = [
+  ["calendar", "meeting"], ["meeting", "meeting"], ["microphone", "call"],
+  ["video", "camera"], ["media", "video"], ["fullscreen", "fullscreen"]
+]
+
+function holdWord(reasons, typing) {
+  var list = reasons || []
+  for (var i = 0; i < BAR_WORDS.length; i++)
+    if (list.indexOf(BAR_WORDS[i][0]) !== -1) return BAR_WORDS[i][1]
+  return typing ? "typing" : ""
 }
 
 var REASON_LABELS = {
   fullscreen: "fullscreen window",
+  media: "video playing",
   microphone: "call in progress",
   video: "camera or screen share",
-  meeting: "meeting window open"
+  meeting: "meeting window open",
+  calendar: "meeting in calendar"
 }
 
 function pauseReasonText(reasons) {
@@ -84,7 +173,10 @@ if (typeof module !== "undefined") {
     stepValue: stepValue,
     formatRemaining: formatRemaining,
     idleCreditsBreak: idleCreditsBreak,
-    parsePauseReasons: parsePauseReasons,
+    calendarMeetingNow: calendarMeetingNow,
+    holdReasons: holdReasons,
+    isWatching: isWatching,
+    holdWord: holdWord,
     pauseReasonText: pauseReasonText
   }
 }

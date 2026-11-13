@@ -311,6 +311,8 @@ Panel {
             { key: "pauseOnMicrophone", label: "Hold on calls (microphone)" },
             { key: "pauseOnVideo", label: "Hold on camera or screen share" },
             { key: "pauseOnMeeting", label: "Hold while a meeting window is open" },
+            { key: "pauseOnCalendar", label: "Hold during calendar meetings" },
+            { key: "pauseOnMedia", label: "Hold while a video plays" },
             { key: "pauseOnIdle", label: "Hold while away" }
           ]
 

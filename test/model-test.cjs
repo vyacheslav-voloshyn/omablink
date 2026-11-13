@@ -43,15 +43,69 @@ assert.strictEqual(Model.idleCreditsBreak(25, 20), true)
 assert.strictEqual(Model.idleCreditsBreak(20, 20), true)
 assert.strictEqual(Model.idleCreditsBreak(19, 20), false)
 
-// Only known reasons count. A stray hyprctl error on stdout must not defer
-// the break forever.
-assert.deepStrictEqual(Model.parsePauseReasons("fullscreen\nmicrophone\n"), ["fullscreen", "microphone"])
-assert.deepStrictEqual(Model.parsePauseReasons(""), [])
-assert.deepStrictEqual(Model.parsePauseReasons("Couldn't connect to Hyprland\n"), [])
-assert.deepStrictEqual(Model.parsePauseReasons("video\nvideo\n"), ["video"])
+const allHolds = {
+  pauseOnFullscreen: true, pauseOnMedia: true, pauseOnMicrophone: true,
+  pauseOnVideo: true, pauseOnMeeting: true, pauseOnCalendar: true,
+  meetingPattern: "Google Meet|Zoom Meeting"
+}
+const holds = (facts, config) => Model.holdReasons(Object.assign({ windows: [], captures: [], events: [], now: 0 }, facts), config || allHolds)
+const win = (extra) => Object.assign({ title: "", cls: "", visible: true, fullscreen: 0, inhibitingIdle: false }, extra)
+
+assert.deepStrictEqual(holds({}), [])
+// Hidden windows play to nobody; the meeting pattern still matches them,
+// because the call usually sits behind whatever is being discussed.
+assert.deepStrictEqual(holds({ windows: [win({ visible: false, fullscreen: 1, inhibitingIdle: true })] }), [])
+assert.deepStrictEqual(holds({ windows: [win({ visible: false, title: "Google Meet" })] }), ["meeting"])
+assert.deepStrictEqual(holds({ windows: [win({ fullscreen: 2, inhibitingIdle: true })] }), ["fullscreen", "media"])
+// A broken user regex disables the check instead of throwing every tick.
+assert.deepStrictEqual(holds({ windows: [win({ title: "x" })] }, Object.assign({}, allHolds, { meetingPattern: "(" })), [])
+// Recording a sink's monitor (cava, EasyEffects) is not a call.
+assert.deepStrictEqual(holds({ captures: [{ audio: true, video: false, fromSink: true }] }), [])
+assert.deepStrictEqual(holds({ captures: [{ audio: true, video: false, fromSink: false }] }), ["microphone"])
+assert.deepStrictEqual(holds({ captures: [{ audio: false, video: true, fromSink: false }] }), ["video"])
+// Every check obeys its switch.
+assert.deepStrictEqual(holds({ windows: [win({ fullscreen: 1, inhibitingIdle: true, title: "Google Meet" })],
+  captures: [{ audio: true, video: true, fromSink: false }] }, {}), [])
+
+const at = (iso) => Date.parse(iso)
+const meeting = (extra) => Object.assign({
+  start: "2026-11-13T09:00:00Z", end: "2026-11-13T09:30:00Z", allDay: false, busy: true, status: "",
+  joinUrl: "https://meet.example/abc", accountLabel: "me@example.com",
+  attendees: [{ email: "me@example.com", status: "accepted" }, { email: "you@example.com", status: "accepted" }]
+}, extra)
+
+assert.strictEqual(Model.calendarMeetingNow([meeting()], at("2026-11-13T09:10:00Z")), true)
+// Start inclusive, end exclusive: a back-to-back meeting does not overlap.
+assert.strictEqual(Model.calendarMeetingNow([meeting()], at("2026-11-13T09:00:00Z")), true)
+assert.strictEqual(Model.calendarMeetingNow([meeting()], at("2026-11-13T09:30:00Z")), false)
+assert.strictEqual(Model.calendarMeetingNow([meeting({ allDay: true })], at("2026-11-13T09:10:00Z")), false)
+assert.strictEqual(Model.calendarMeetingNow([meeting({ busy: false })], at("2026-11-13T09:10:00Z")), false)
+assert.strictEqual(Model.calendarMeetingNow([meeting({ status: "cancelled" })], at("2026-11-13T09:10:00Z")), false)
+// A focus block: busy, but no link and nobody else.
+assert.strictEqual(Model.calendarMeetingNow([meeting({ joinUrl: "", attendees: [] })], at("2026-11-13T09:10:00Z")), false)
+// An in-person meeting has attendees but no link.
+assert.strictEqual(Model.calendarMeetingNow([meeting({ joinUrl: "" })], at("2026-11-13T09:10:00Z")), true)
+assert.strictEqual(Model.calendarMeetingNow([meeting({
+  attendees: [{ email: "ME@example.com", status: "declined" }, { email: "you@example.com", status: "accepted" }]
+})], at("2026-11-13T09:10:00Z")), false)
+assert.strictEqual(Model.calendarMeetingNow(null, at("2026-11-13T09:10:00Z")), false)
+assert.deepStrictEqual(holds({ events: [meeting()], now: at("2026-11-13T09:10:00Z") }), ["calendar"])
+
+// Idle input during a call or a video is watching, not resting; fullscreen
+// alone is not, because the screensaver is a fullscreen window.
+assert.strictEqual(Model.isWatching(["media"]), true)
+assert.strictEqual(Model.isWatching(["fullscreen"]), false)
+assert.strictEqual(Model.isWatching([]), false)
+
+// A call in a meeting window also holds the mic and plays video; the bar
+// names the meeting.
+assert.strictEqual(Model.holdWord(["media", "microphone", "meeting"], false), "meeting")
+assert.strictEqual(Model.holdWord(["media", "microphone"], false), "call")
+assert.strictEqual(Model.holdWord(["fullscreen", "media"], true), "video")
+assert.strictEqual(Model.holdWord([], true), "typing")
+assert.strictEqual(Model.holdWord([], false), "")
 
 assert.strictEqual(Model.pauseReasonText(["microphone"]), "call in progress")
-assert.deepStrictEqual(Model.parsePauseReasons("meeting\n"), ["meeting"])
 assert.strictEqual(Model.pauseReasonText(["meeting"]), "meeting window open")
 assert.strictEqual(Model.pauseReasonText(["fullscreen", "video"]), "fullscreen window, camera or screen share")
 assert.strictEqual(Model.pauseReasonText([]), "")

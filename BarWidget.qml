@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
+import Quickshell.Services.Pipewire
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
@@ -44,6 +46,12 @@ BarWidget {
     pauseOnVideo: Model.boolSetting(setting("pauseOnVideo", true), true),
     pauseOnIdle: Model.boolSetting(setting("pauseOnIdle", true), true),
     pauseOnMeeting: Model.boolSetting(setting("pauseOnMeeting", true), true),
+    pauseOnMedia: Model.boolSetting(setting("pauseOnMedia", true), true),
+    pauseOnCalendar: Model.boolSetting(setting("pauseOnCalendar", true), true),
+    // Omarchy's Google Calendar plugin keeps this cache fresh; any source that
+    // writes the same shape works (see README, "Calendar").
+    calendarFile: String(setting("calendarFile", "~/.cache/omarchy-google-calendar/events.json"))
+      .replace(/^~(?=\/)/, Quickshell.env("HOME")),
     barIcon: Model.boolSetting(setting("barIcon", true), true),
     barIconAnimated: Model.boolSetting(setting("barIconAnimated", true), true),
     // Matched against every window's title and class. A muted listener holds
@@ -62,6 +70,9 @@ BarWidget {
   property string deferReason: ""
   property int idleTicks: 0
   property string headsUpFor: ""
+  property var holds: []
+  property var calendarEvents: []
+  property int inputWait: 0
 
   property bool breaking: false
   property bool overlayShown: false
@@ -73,21 +84,28 @@ BarWidget {
   property bool statsDirty: false
 
   readonly property string statePath: Quickshell.env("HOME") + "/.local/state/omarchy/omablink.json"
-  readonly property string helperPath: Qt.resolvedUrl("bin/omablink-pause-check")
-    .toString().replace("file://", "")
 
-  readonly property bool away: config.pauseOnIdle && idleMonitor.isIdle
+  readonly property bool away: config.pauseOnIdle && idleMonitor.isIdle && !Model.isWatching(holds)
   readonly property bool counting: !breaking && !paused && !away
   readonly property int secondsToNext: Model.secondsToNext(elapsed, config)
 
+  // While a hold is on, the countdown is not the news: the break will wait
+  // past zero, so the bar names what it waits for instead.
+  readonly property string holdWord: Model.holdWord(holds, inputWait > 0)
+  readonly property bool holding: counting && holdWord !== ""
+
   readonly property string displayText: breaking
     ? String(breakRemaining) + "s"
+    : holding && !vertical ? holdWord
     : Model.formatRemaining(secondsToNext)
 
   readonly property string statusText: {
     if (breaking) return Model.tierTitle(breakKind) + " — " + breakRemaining + "s left"
     if (paused) return "Paused"
     if (away) return "Away — timer held"
+    if (holding) return "Break waits for "
+      + (holds.length > 0 ? Model.pauseReasonText(holds) : "a pause in typing")
+      + " — next due in " + Model.formatRemaining(secondsToNext)
     if (deferReason !== "") return "Waiting: " + deferReason
     return "Next break in " + Model.formatRemaining(secondsToNext)
   }
@@ -145,19 +163,59 @@ BarWidget {
 
   function requestBreak(kind) {
     if (breaking) return
-    pendingKind = kind
-    pauseCheck.running = false
-    pauseCheck.command = [
-      root.helperPath,
-      root.config.pauseOnFullscreen ? "1" : "0",
-      root.config.pauseOnMicrophone ? "1" : "0",
-      root.config.pauseOnVideo ? "1" : "0",
-      root.config.pauseOnMeeting ? root.config.meetingPattern : ""
-    ]
-    pauseCheck.running = true
+    if (root.holds.length === 0) {
+      root.startBreak(kind)
+      return
+    }
+    // Retry in a minute instead of dropping the break: a two-hour call
+    // would otherwise cost the whole afternoon's breaks.
+    root.deferReason = Model.pauseReasonText(root.holds)
+    root.bump("deferred")
+    var next = { micro: root.elapsed.micro, long: root.elapsed.long, lock: root.elapsed.lock }
+    next[kind] = Math.max(0, Model.tierPeriod(kind, root.config) - 60)
+    root.elapsed = next
+    root.headsUpFor = kind
   }
 
-  property string pendingKind: "micro"
+  // --- holds ----------------------------------------------------------------
+
+  // Plain facts for Model.holdReasons, read from Quickshell's own Hyprland and
+  // PipeWire connections rather than by spawning hyprctl or pw-dump.
+  function collectFacts() {
+    var windows = []
+    var toplevels = Hyprland.toplevels.values
+    for (var i = 0; i < toplevels.length; i++) {
+      var ipc = toplevels[i].lastIpcObject || {}
+      windows.push({
+        title: ipc.title || toplevels[i].title || "",
+        cls: ipc["class"] || "",
+        visible: ipc.visible === true,
+        fullscreen: ipc.fullscreen || 0,
+        inhibitingIdle: ipc.inhibitingIdle === true
+      })
+    }
+
+    var captures = []
+    var groups = Pipewire.linkGroups.values
+    for (var j = 0; j < groups.length; j++) {
+      var group = groups[j]
+      if (!group.source || !group.target || !group.target.isStream) continue
+      if (group.state !== PwLinkState.Active) continue
+      var targetType = group.target.type
+      captures.push({
+        audio: (targetType & PwNodeType.AudioInStream) === PwNodeType.AudioInStream,
+        video: (targetType & PwNodeType.Video) !== 0,
+        fromSink: (group.source.type & PwNodeType.Sink) !== 0
+      })
+    }
+
+    return { windows: windows, captures: captures, events: root.calendarEvents, now: Date.now() }
+  }
+
+  function refreshHolds() {
+    var next = Model.holdReasons(collectFacts(), root.config)
+    if (next.join() !== root.holds.join()) root.holds = next
+  }
 
   function startBreak(kind) {
     var tier = kind === undefined || kind === "" ? "micro" : kind
@@ -360,6 +418,8 @@ BarWidget {
         return
       }
 
+      root.refreshHolds()
+
       if (root.paused) return
 
       if (root.away) {
@@ -402,6 +462,13 @@ BarWidget {
 
       var due = Model.dueTier(root.elapsed, root.config)
       if (due !== "") {
+        // Let the sentence or the drag finish: wait for a few seconds without
+        // input, but not for longer than half a minute of it.
+        if (!inputMonitor.isIdle && root.inputWait < 30) {
+          root.inputWait += 1
+          return
+        }
+        root.inputWait = 0
         root.requestBreak(due)
         return
       }
@@ -414,7 +481,9 @@ BarWidget {
         lock: root.elapsed.lock + root.config.headsUpSeconds
       }, root.config)
 
-      if (root.config.headsUpSeconds > 0 && next !== "" && root.headsUpFor !== next) {
+      // Nothing to wrap up while a hold is on; the deferral speaks for itself.
+      if (root.config.headsUpSeconds > 0 && next !== "" && root.headsUpFor !== next
+          && root.holds.length === 0) {
         root.headsUpFor = next
         root.notify(Model.tierTitle(next) + " in " + Model.formatRemaining(root.secondsToNext),
                     next === "lock" ? "The screen locks after the countdown."
@@ -459,6 +528,46 @@ BarWidget {
     respectInhibitors: false
   }
 
+  IdleMonitor {
+    id: inputMonitor
+    timeout: 5
+    respectInhibitors: false
+  }
+
+  // lastIpcObject (fullscreen, visibility, idle inhibition) is a snapshot that
+  // Hyprland events do not update, so it is re-read on a slow cadence.
+  Timer {
+    interval: 5000
+    repeat: true
+    running: root.config.pauseOnFullscreen || root.config.pauseOnMedia || root.config.pauseOnMeeting
+    triggeredOnStart: true
+    onTriggered: Hyprland.refreshToplevels()
+  }
+
+  // Link state stays "unlinked" until the link is bound, and only then does
+  // an active capture tell itself apart from an idle one.
+  PwObjectTracker {
+    objects: root.config.pauseOnMicrophone || root.config.pauseOnVideo ? Pipewire.linkGroups.values : []
+  }
+
+  FileView {
+    id: calendarFile
+    path: root.config.pauseOnCalendar ? root.config.calendarFile : ""
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var parsed = null
+      try {
+        parsed = JSON.parse(text())
+      } catch (error) {
+        parsed = null
+      }
+      root.calendarEvents = parsed && Array.isArray(parsed.events) ? parsed.events : []
+    }
+    onLoadFailed: root.calendarEvents = []
+  }
+
   FileView {
     id: stateFile
     path: root.statePath
@@ -467,27 +576,6 @@ BarWidget {
     printErrors: false
     onLoaded: root.loadState(text())
     onLoadFailed: root.loadState("")
-  }
-
-  Process {
-    id: pauseCheck
-    stdout: StdioCollector {
-      onStreamFinished: {
-        var reasons = Model.parsePauseReasons(text)
-        if (reasons.length === 0) {
-          root.startBreak(root.pendingKind)
-          return
-        }
-        // Retry in a minute instead of dropping the break: a two-hour call
-        // would otherwise cost the whole afternoon's breaks.
-        root.deferReason = Model.pauseReasonText(reasons)
-        root.bump("deferred")
-        var next = { micro: root.elapsed.micro, long: root.elapsed.long, lock: root.elapsed.lock }
-        next[root.pendingKind] = Math.max(0, Model.tierPeriod(root.pendingKind, root.config) - 60)
-        root.elapsed = next
-        root.headsUpFor = root.pendingKind
-      }
-    }
   }
 
   Process { id: notifier }
@@ -578,6 +666,8 @@ BarWidget {
         panelStatus: panelLoader.status,
         panelOpened: panelLoader.item ? panelLoader.item.opened : null,
         away: root.away,
+        holds: root.holds,
+        calendarEvents: root.calendarEvents.length,
         paused: root.paused,
         breaking: root.breaking,
         hasBar: root.bar !== null,
@@ -636,7 +726,7 @@ BarWidget {
     // The tooltip carries the click hint too: the panel is the only way into
     // the settings, and a bare countdown gives no reason to click it.
     tooltipText: root.statusText + "  ·  click: stats and settings, middle: pause"
-    dimmed: root.paused || root.away
+    dimmed: root.paused || root.away || root.holding
     active: root.breaking
     horizontalMargin: 8.75
     verticalPadding: 8.75
@@ -647,7 +737,7 @@ BarWidget {
       id: eyeRow
       visible: root.showEye
       anchors.centerIn: parent
-      spacing: Style.space(5)
+      spacing: Style.space(root.holding ? 8 : 5)
       scale: button.pressScale
 
       EyeGlyph {
@@ -660,7 +750,8 @@ BarWidget {
         irisColor: root.labelColor
         // Shut while nothing is counting, so a paused timer reads at a glance.
         // The blink animates `lid` and leaves `base` bound to the state.
-        property real base: root.paused || root.away ? 0 : 1
+        // Half shut while a hold keeps the break waiting.
+        property real base: root.paused || root.away ? 0 : root.holding ? 0.45 : 1
         property real lid: 1
         openness: base * lid
         Behavior on base {
